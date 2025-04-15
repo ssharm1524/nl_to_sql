@@ -142,8 +142,11 @@ def lang2sql(api_key, table_name, query, model = "gpt-3.5-turbo", temperature = 
 data_path = "./data"
 files = [file for file in os.listdir(path = data_path) if file.endswith(".csv")]
 chicago_crime = pd.concat(([pd.read_csv(os.path.join(data_path, file)) for file in files]), ignore_index=True)
-api_key = os.getenv('OPENAI_KEY')
-openai_api_models = pd.DataFrame(openai.Model.list()["data"])
+api_key = os.getenv('OPENAI_API_KEY')
+if not api_key:
+    raise ValueError("OPENAI_API_KEY environment variable is not set. Please set it before running the program.")
+
+openai.api_key = api_key
 
 # Interactive query interface
 print("Hi, please enter your query below. Enter 'q' to quit the program.")
