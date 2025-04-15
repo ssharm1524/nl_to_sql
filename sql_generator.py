@@ -4,24 +4,28 @@ import openai
 import time
 import os
 
-data_path = "./data"
+class message:
+    def __init__(message, system, user, column_names, column_attr):
+        message.system = system
+        message.user = user
+        message.column_names = column_names
+        message.column_attr = column_attr
 
-files = [file for file in os.listdir(path = data_path) if file.endswith(".csv")]
+class response:
+        def __init__(output, message, response, sql):
+            output.message = message
+            output.response = response
+            output.sql = sql
 
-chicago_crime = pd.concat(([pd.read_csv(os.path.join(data_path, file)) for file in files]), ignore_index=True)
-
-# print(chicago_crime.head())
+def add_quotes(query, col_names):
+  for i in col_names:
+      if i in query:
+          l = query.find(i)
+          if query[l-1] != "'" and query[l-1] != '"': 
+              query = str(query).replace(i, '"' + i + '"') 
+  return(query)
 
 def create_message(table_name, query):
-
-    class message:
-        def __init__(message, system, user, column_names, column_attr):
-            message.system = system
-            message.user = user
-            message.column_names = column_names
-            message.column_attr = column_attr
-
-    
     system_template = """
 
     Given the following SQL table, your job is to write queries given a user’s request. \n
@@ -42,13 +46,39 @@ def create_message(table_name, query):
     m = message(system = system, user = user, column_names = col_attr["column_name"], column_attr = col_attr["column_type"])
     return m
 
+def lang2sql(api_key, table_name, query, model = "gpt-3.5-turbo", temperature = 0, max_tokens = 256, frequency_penalty = 0,presence_penalty= 0):
+    openai.api_key = api_key
+    m = create_message(table_name = table_name, query = query)
+    message = [
+    {
+      "role": "system",
+      "content": m.system
+    },
+    {
+      "role": "user",
+      "content": m.user
+    }
+    ]
+    
+    openai_response = openai.ChatCompletion.create(
+        model = model,
+        messages = message,
+        temperature = temperature,
+        max_tokens = max_tokens,
+        frequency_penalty = frequency_penalty,
+        presence_penalty = presence_penalty)
+    
+    sql_query = add_quotes(query = openai_response["choices"][0]["message"]["content"], col_names = m.column_names)
+    output = response(message = m, response = openai_response, sql = sql_query)
+    return output
 
-openai.api_key = os.getenv('OPENAI_KEY')
+data_path = "./data"
+files = [file for file in os.listdir(path = data_path) if file.endswith(".csv")]
+chicago_crime = pd.concat(([pd.read_csv(os.path.join(data_path, file)) for file in files]), ignore_index=True)
+api_key = os.getenv('OPENAI_KEY')
 openai_api_models = pd.DataFrame(openai.Model.list()["data"])
-# print(openai_api_models.head())
 
 print("Hi, please enter your query below. Enter 'q' to quit the program.")
-
 while True:
     query = input("> ")
     if query.lower() == 'q':
@@ -56,27 +86,8 @@ while True:
         break
     print(f"Processing query: {query}")
 
-    prompt = create_message("chicago_crime", query)
-    message = [
-        {
-            "role": "system",
-            "content": prompt.system
-        },
-        {
-            "role": "user",
-            "content": prompt.user
-        }
-    ]
-    response = openai.ChatCompletion.create(
-        model = "gpt-4o-mini",
-        messages = message,
-        temperature = 0,
-        max_tokens = 256
-    )
+    response = lang2sql(api_key = api_key, table_name = "chicago_crime", query = query)
 
-    generated_sql_query = print(response.choices[0]["message"]["content"])
-    print("Generated SQL Query: ", generated_sql_query)
+    print("Generated SQL Query: ", response.sql)
     print("Running SQL Query...")
-    duckdb.sql(generated_sql_query).show()
-    
-    
+    duckdb.sql(response.sql).show()
