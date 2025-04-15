@@ -10,7 +10,7 @@ files = [file for file in os.listdir(path = data_path) if file.endswith(".csv")]
 
 chicago_crime = pd.concat(([pd.read_csv(os.path.join(data_path, file)) for file in files]), ignore_index=True)
 
-print(chicago_crime.head())
+# print(chicago_crime.head())
 
 def create_message(table_name, query):
 
@@ -44,6 +44,39 @@ def create_message(table_name, query):
 
 
 openai.api_key = os.getenv('OPENAI_KEY')
-openai.Model.list()
-print(openai.Model.list())
+openai_api_models = pd.DataFrame(openai.Model.list()["data"])
+# print(openai_api_models.head())
 
+print("Hi, please enter your query below. Enter 'q' to quit the program.")
+
+while True:
+    query = input("> ")
+    if query.lower() == 'q':
+        print("Goodbye!")
+        break
+    print(f"Processing query: {query}")
+
+    prompt = create_message("chicago_crime", query)
+    message = [
+        {
+            "role": "system",
+            "content": prompt.system
+        },
+        {
+            "role": "user",
+            "content": prompt.user
+        }
+    ]
+    response = openai.ChatCompletion.create(
+        model = "gpt-4o-mini",
+        messages = message,
+        temperature = 0,
+        max_tokens = 256
+    )
+
+    generated_sql_query = print(response.choices[0]["message"]["content"])
+    print("Generated SQL Query: ", generated_sql_query)
+    print("Running SQL Query...")
+    duckdb.sql(generated_sql_query).show()
+    
+    
